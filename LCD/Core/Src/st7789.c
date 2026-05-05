@@ -1,3 +1,47 @@
+/*
+ * ============================================================
+ * [LCD - DO NOT MODIFY]: This file is owned by the LCD Engineer.
+ * Other team members must NOT edit this file under any circumstances.
+ *
+ * FILE: st7789.c
+ * OWNER: LCD Engineer
+ *
+ * PURPOSE:
+ *   Low-level hardware driver for the ST7789 1.3" 240×240 TFT LCD
+ *   controller.  Communicates over SPI1 using three control lines:
+ *     CS  (PB6) — chip select
+ *     DC  (PA9) — data / command select
+ *     RST (PC7) — hardware reset
+ *
+ * LAYER OVERVIEW:
+ *   ┌─────────────────────────────────────────────────────────┐
+ *   │  Application Stages (stage_calibration/selftest/tracker) │
+ *   ├─────────────────────────────────────────────────────────┤
+ *   │  display.c — high-level display management layer        │
+ *   ├─────────────────────────────────────────────────────────┤
+ *   │  st7789.c  — THIS FILE: hardware driver                 │
+ *   │    • SPI communication (WriteCommand/WriteData)         │
+ *   │    • Init sequence (COLMOD, MADCTL, porch, gamma, etc.) │
+ *   │    • Drawing primitives (pixels, lines, circles, etc.)  │
+ *   │    • Text rendering (WriteChar/WriteString + font data) │
+ *   ├─────────────────────────────────────────────────────────┤
+ *   │  HAL_SPI_Transmit — STM32 HAL SPI driver                │
+ *   └─────────────────────────────────────────────────────────┘
+ *
+ * COLOR FORMAT:
+ *   All colors are 16-bit RGB565: RRRRRGGGGGGBBBBB.
+ *   Predefined color constants are in st7789.h.
+ *
+ * DMA SUPPORT:
+ *   Compile with -DUSE_DMA to enable DMA SPI transfers.
+ *   DMA_MIN_SIZE sets the minimum transfer size (in bytes) below
+ *   which polling mode is used instead of DMA.
+ *
+ * THIS FILE IS NOT FOR INTEGRATION — other engineers must not call
+ * ST7789_* functions directly.  Use the display.h API instead.
+ * ============================================================
+ */
+
 #include "st7789.h"
 
 #ifdef USE_DMA

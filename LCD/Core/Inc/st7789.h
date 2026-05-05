@@ -1,27 +1,62 @@
+/*
+ * ============================================================
+ * [LCD - DO NOT MODIFY]: This file is owned by the LCD Engineer.
+ * *** NO OTHER ENGINEER SHOULD MODIFY OR DIRECTLY CALL FUNCTIONS ***
+ * *** DECLARED IN THIS FILE.  Use display.h instead.             ***
+ *
+ * FILE: st7789.h
+ * OWNER: LCD Engineer
+ *
+ * PURPOSE:
+ *   Hardware abstraction and driver API for the ST7789 1.3" 240×240
+ *   TFT LCD controller.  Configures the SPI port, GPIO control pins,
+ *   display geometry, color mode, rotation, and declares all low-level
+ *   graphics primitives.
+ *
+ * DO NOT CALL ST7789_* FUNCTIONS FROM YOUR OWN CODE.
+ *   The correct integration path for all other engineers is:
+ *   - Include "display.h"            → step count, pace badge, status bar
+ *   - Include "stage_calibration.h"  → calibration screen functions
+ *   - Include "stage_selftest.h"     → self-test screen functions
+ *   - Include "stage_tracker.h"      → step tracker constants
+ *   These headers give you the high-level API.  The ST7789 driver is
+ *   an internal implementation detail of the LCD subsystem.
+ *
+ * COLOR FORMAT:
+ *   All colors use 16-bit RGB565: 5 red bits, 6 green bits, 5 blue bits.
+ *   Pre-defined color constants are listed in this file.
+ * ============================================================
+ */
+
 #ifndef __ST7789_H
 #define __ST7789_H
 
 #include "fonts.h"
 #include "main.h"
 
-/* choose a Hardware SPI port to use. */
+/* SPI port used for LCD communication.
+ * hspi1 is configured by MX_SPI1_Init() in the HAL init code.
+ * [LCD - DO NOT MODIFY]: Changing this without adjusting MX_SPI1_Init() will break the LCD. */
 #define ST7789_SPI_PORT hspi1
 extern SPI_HandleTypeDef ST7789_SPI_PORT;
 
-/* choose whether use DMA or not */
+/* DMA mode — comment out (default) for polled SPI, uncomment to enable DMA transfers.
+ * DMA requires a framebuffer (disp_buf in st7789.c) and DMA channel configuration. */
 // #define USE_DMA
 
-/* If u need CS control, comment below*/
+/* Chip-select control — leave this uncommented to use CS pin.
+ * Comment CFG_NO_CS only if CS is permanently tied low on your board. */
 //#define CFG_NO_CS
 
-/* Pin connection*/
-#define ST7789_RST_PORT ST7789_RST_GPIO_Port
+/* GPIO pin mappings for LCD control signals.
+ * These map the logical names used in the driver to the physical pins defined in main.h. */
+#define ST7789_RST_PORT ST7789_RST_GPIO_Port  /* PC7 — hardware reset (active low) */
 #define ST7789_RST_PIN  ST7789_RST_Pin
-#define ST7789_DC_PORT  ST7789_DC_GPIO_Port
+#define ST7789_DC_PORT  ST7789_DC_GPIO_Port   /* PA9 — data/command select */
 #define ST7789_DC_PIN   ST7789_DC_Pin
 
 #ifndef CFG_NO_CS
-#define ST7789_CS_PORT  ST7789_CS_GPIO_Port
+#define ST7789_CS_PORT  ST7789_CS_GPIO_Port   /* PB6 — SPI chip select (active low) */
 #define ST7789_CS_PIN   ST7789_CS_Pin
 #endif
 
