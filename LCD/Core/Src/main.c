@@ -22,11 +22,14 @@
 #include "usart.h"
 #include "gpio.h"
 
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
 #include "st7789.h"
 #include "display.h"
+#include "stage_calibration.h"
+#include "stage_selftest.h"
+#include "stage_tracker.h"
 
 /* USER CODE END Includes */
 
@@ -97,7 +100,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
   ST7789_Fill_Color(BLACK); // Wipe any garbage
   ST7789_Init();
+
+  Stage_Calibration_Run();
+  Stage_SelfTest_Run();
+  Stage_Tracker_Run();
+
   Display_Init();
+
 
   // Status message test
   Display_SetStatus("Calibrating...");
@@ -111,101 +120,19 @@ int main(void)
   Display_ClearStatus();
   HAL_Delay(500);
 
-  uint32_t step_count = 0;
-  Display_UpdateSteps(step_count);
-  Display_UpdatePace(PACE_STATIONARY);
-
-  // Phase control
-  #define PHASE_STATIONARY_MS  10000   // 15s slow
-  #define PHASE_WALKING_MS     10000   // 15s medium 
-  #define PHASE_RUNNING_MS     10000   // 15s fast 
-
-  uint32_t phase_start = HAL_GetTick();
-  uint8_t  phase = 0;  // 0=stationary, 1=walking, 2=running
-  uint32_t step_interval_ms = 3000;  // start slow
-
-  static uint32_t step_times[100];
-  static uint8_t  step_count_window = 0;
-
   /* USER CODE END 2 */
 
+  /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-  /* USER CODE END WHILE */
+    /* USER CODE END WHILE */
 
-  /* USER CODE BEGIN 3 */
-      uint32_t now = HAL_GetTick();
+    /* USER CODE BEGIN 3 */
 
-      // Switch phase based on elapsed time
-      uint32_t phase_elapsed = now - phase_start;
-
-      if (phase == 0 && phase_elapsed >= PHASE_STATIONARY_MS)
-      {
-          phase = 1;
-          step_interval_ms = 600;  // ~100 spm = Walking
-          phase_start = HAL_GetTick();
-      }
-      else if (phase == 1 && phase_elapsed >= PHASE_WALKING_MS)
-      {
-          phase = 2;
-          step_interval_ms = 375;   // ~160 spm = Running
-          phase_start = HAL_GetTick();
-      }
-      else if (phase == 2 && phase_elapsed >= PHASE_RUNNING_MS)
-      {
-          phase = 0;
-          step_interval_ms = 3000;  // ~20 spm = Stationary
-          phase_start = HAL_GetTick();
-      }
-
-      HAL_Delay(step_interval_ms);
-
-      // Add new step timestamp
-      step_count++;
-      now = HAL_GetTick();
-
-      if (step_count_window < 100)
-          step_times[step_count_window++] = now;
-
-      // Discard steps outside rolling 10s window
-      uint8_t i = 0;
-      while (i < step_count_window)
-      {
-          if ((now - step_times[i]) > 10000)
-          {
-              for (uint8_t j = i; j < step_count_window - 1; j++)
-                  step_times[j] = step_times[j + 1];
-              step_count_window--;
-          }
-          else i++;
-      }
-
-      // Calculate SPM — dynamic rolling window (actual span between first and last step)
-      float spm = 0.0f;
-      if (step_count_window >= 2)
-      {
-          uint32_t oldest = step_times[0];
-          uint32_t newest = step_times[step_count_window - 1];
-          uint32_t span_ms = newest - oldest;
-
-          if (span_ms > 0)
-              spm = (step_count_window - 1) * 60000.0f / span_ms;
-      }
-
-      // Classify using realistic thresholds
-      uint8_t pace;
-      if (spm < 40.0f)
-          pace = PACE_STATIONARY;
-      else if (spm <= 130.0f)
-          pace = PACE_WALKING;
-      else
-          pace = PACE_RUNNING;
-
-      Display_UpdateSteps(step_count);
-      Display_UpdatePace(pace);
   /* USER CODE END 3 */
   }
+
 }
 
 /**
