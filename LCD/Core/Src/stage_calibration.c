@@ -244,7 +244,7 @@ void Stage_Calibration_Run(void)
 
     /* Wait for the button to be released before starting the step loop */
     while (HAL_GPIO_ReadPin(BTN_CALIBRATE_PORT, BTN_CALIBRATE_PIN)
-           == GPIO_PIN_RESET);
+           == GPIO_PIN_SET);
     HAL_Delay(50);  /* Debounce release edge */
 
     /* --- 6 directional calibration steps ---

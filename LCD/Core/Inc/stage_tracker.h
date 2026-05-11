@@ -48,17 +48,16 @@
 #define SPM_STATIONARY_MAX   40.0f   /* Below this → PACE_STATIONARY */
 #define SPM_WALKING_MAX     130.0f   /* At or below this → PACE_WALKING; above → PACE_RUNNING */
 
-/* Rolling window duration in milliseconds.
- * Steps older than this are discarded from the SPM calculation.
- * 10 seconds gives a responsive but stable pace reading. */
-#define STEP_WINDOW_MS      10000
+/* Fixed-count step window: retain only the last N step timestamps. */
+#define STEP_WINDOW_N       8      /* number of recent step timestamps to keep */
+#define IDLE_TIMEOUT_MS     1500   /* force PACE_STATIONARY if no step in this many ms */
 
 /* Simulation phase durations (ms) — used ONLY while the simulation is in place.
  * [HOOK - Step Tracker Engineer]: These constants become irrelevant once you
  *   replace the phase simulation block with real step detection. */
-#define PHASE_STATIONARY_MS  10000  /* How long the stationary simulation phase lasts */
-#define PHASE_WALKING_MS     10000  /* How long the walking simulation phase lasts */
-#define PHASE_RUNNING_MS     10000  /* How long the running simulation phase lasts */
+#define PHASE_STATIONARY_MS   8000  /* How long the stationary simulation phase lasts */
+#define PHASE_WALKING_MS      8000  /* How long the walking simulation phase lasts */
+#define PHASE_RUNNING_MS     25000  /* How long the running simulation phase lasts */
 
 /* Main entry point for Stage 3 — called by main.c.
  * Runs an infinite loop: detects steps, calculates SPM, updates LCD.

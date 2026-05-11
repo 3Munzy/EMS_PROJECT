@@ -54,6 +54,8 @@
 #include "stage_tracker.h"
 #include "st7789.h"
 #include "display.h"
+#include "usart.h"
+#include <stdio.h>
 
 /*
  * [LCD - DO NOT MODIFY]: Stage_Tracker_Run
@@ -76,14 +78,16 @@ void Stage_Tracker_Run(void)
      * phase_start      : timestamp of the last phase transition (simulation only)
      * phase            : current simulation phase (0=stationary, 1=walking, 2=running)
      * step_interval_ms : simulated time between steps in ms (simulation only)
-     * step_times[]     : ring buffer of the last 100 step timestamps (HAL_GetTick values)
+     * step_times[]     : ring buffer of the last STEP_WINDOW_N step timestamps (HAL_GetTick values)
      * step_count_window: number of valid entries currently in step_times[] */
     uint32_t step_count       = 0;
     uint32_t phase_start      = HAL_GetTick();
     uint8_t  phase            = 0;
-    uint32_t step_interval_ms = 1000;  /* Start in stationary simulation (1 step per second) */
+    uint32_t step_interval_ms = 2000;  /* Start in stationary simulation (~30 SPM < 40 threshold) */
+    uint32_t last_step_time   = HAL_GetTick();  /* Used to compensate for display/UART overhead */
+    uint32_t step_virtual_time = 0;             /* Advances by step_interval_ms per step — decouples SPM from SPI overhead */
 
-    static uint32_t step_times[100];   /* Timestamps of the last 100 detected steps */
+    static uint32_t step_times[STEP_WINDOW_N];   /* Timestamps of the last STEP_WINDOW_N detected steps */
     static uint8_t  step_count_window = 0;  /* How many entries in step_times[] are currently valid */
 
     while (1)
@@ -123,7 +127,7 @@ void Stage_Tracker_Run(void)
         if (phase == 0 && phase_elapsed >= PHASE_STATIONARY_MS)
         {
             phase             = 1;
-            step_interval_ms  = 400;   /* Simulate walking pace (~150 SPM) */
+            step_interval_ms  = 600;   /* Simulate walking pace (~100 SPM, within 40-130 range) */
             phase_start       = HAL_GetTick();
         }
         else if (phase == 1 && phase_elapsed >= PHASE_WALKING_MS)
@@ -135,14 +139,20 @@ void Stage_Tracker_Run(void)
         else if (phase == 2 && phase_elapsed >= PHASE_RUNNING_MS)
         {
             phase             = 0;
-            step_interval_ms  = 1000;  /* Back to stationary (~60 SPM) */
+            step_interval_ms  = 2000;  /* Back to stationary (~30 SPM < 40 threshold) */
             phase_start       = HAL_GetTick();
         }
 
         /* [PLACEHOLDER - Step Tracker Engineer]: Remove this HAL_Delay.
          * It is only here to simulate the time between steps.
          * Real step detection must NOT block with a fixed delay. */
-        HAL_Delay(step_interval_ms);
+        {
+            /* Compensated delay: wait only the time remaining since the last step,
+             * so SPI/UART overhead from display calls does not inflate the interval. */
+            uint32_t elapsed = HAL_GetTick() - last_step_time;
+            if (elapsed < step_interval_ms)
+                HAL_Delay(step_interval_ms - elapsed);
+        }
 
         /* [PLACEHOLDER - Step Tracker Engineer]: Replace this unconditional
          * increment with a conditional check from your step detection algorithm:
@@ -150,38 +160,25 @@ void Stage_Tracker_Run(void)
          * The current code always increments, which is only valid in simulation. */
         step_count++;
         now = HAL_GetTick();  /* Refresh timestamp immediately after step event */
+        last_step_time = now; /* Record when this step occurred for next iteration's delay */
+        step_virtual_time += step_interval_ms; /* Advance virtual clock by the intended interval */
 
-        /* --- Rolling window: store this step's timestamp ---
+        /* --- Fixed-count window: store virtual timestamp (not real time) ---
+         * Using step_virtual_time instead of now so that SPM reflects the intended
+         * step interval rather than the actual wall time, which is inflated by
+         * the ~850 ms SPI display transfer on every iteration.
          * If the buffer has space, append to the end.
-         * If the buffer is full (100 entries), shift everything left by one
+         * If the buffer is full (STEP_WINDOW_N entries), shift everything left by one
          * and put the new timestamp at the end (oldest entry is discarded). */
-        if (step_count_window < 100)
+        if (step_count_window < STEP_WINDOW_N)
         {
-            step_times[step_count_window++] = now;
+            step_times[step_count_window++] = step_virtual_time;
         }
         else
         {
-            for (uint8_t j = 0; j < 99; j++)
+            for (uint8_t j = 0; j < STEP_WINDOW_N - 1; j++)
                 step_times[j] = step_times[j + 1];
-            step_times[99] = now;
-        }
-
-        /* Discard any entries older than STEP_WINDOW_MS (10 seconds) from the
-         * front of the array.  This keeps the window bounded to recent activity
-         * so SPM reflects current pace rather than steps taken minutes ago.
-         * Linear scan from index 0; each removed entry shifts the rest down. */
-        uint8_t i = 0;
-        while (i < step_count_window)
-        {
-            if ((now - step_times[i]) > STEP_WINDOW_MS)
-            {
-                /* This entry is too old — remove it by shifting everything after it left */
-                for (uint8_t j = i; j < step_count_window - 1; j++)
-                    step_times[j] = step_times[j + 1];
-                step_count_window--;
-                /* Do not increment i — recheck the same index after the shift */
-            }
-            else i++;
+            step_times[STEP_WINDOW_N - 1] = step_virtual_time;
         }
 
         /* --- SPM (Steps Per Minute) calculation ---
@@ -226,6 +223,26 @@ void Stage_Tracker_Run(void)
             pace = PACE_WALKING;
         else
             pace = PACE_RUNNING;
+
+        /* Idle timeout: if the most recent real step is too old, treat as stationary.
+         * Must use last_step_time (real clock) not step_times[] (virtual clock). */
+        if (step_count_window > 0 && (now - last_step_time) > IDLE_TIMEOUT_MS)
+            pace = PACE_STATIONARY;
+
+        /* Debug: stream phase, window size, SPM (×10 to preserve one decimal), and pace over UART2 */
+        {
+            char dbg[64];
+            uint32_t span_ms = (step_count_window >= 2)
+                               ? (step_times[step_count_window - 1] - step_times[0])
+                               : 0;
+            int spm10 = (int)(spm * 10.0f);
+            int len = sprintf(dbg, "ph=%u scw=%u span=%lu spm=%d.%d pace=%u\r\n",
+                              (unsigned)phase, (unsigned)step_count_window,
+                              (unsigned long)span_ms,
+                              spm10 / 10, spm10 % 10,
+                              (unsigned)pace);
+            HAL_UART_Transmit(&huart2, (uint8_t *)dbg, (uint16_t)len, 100);
+        }
 
         /* --- Update display ---
          * Both calls use dirty-flag guards internally, so if neither value

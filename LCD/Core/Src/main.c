@@ -69,6 +69,7 @@
 #include "stage_calibration.h"
 #include "stage_selftest.h"
 #include "stage_tracker.h"
+#include "stage_display_test.h"
 
 /* USER CODE END Includes */
 
@@ -139,7 +140,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   /* --- LCD Hardware Initialisation --- */
-  ST7789_Fill_Color(BLACK); /* Clear any garbage pixels left over from reset before init runs */
   ST7789_Init();            /* Send full ST7789 init sequence: reset, COLMOD (16-bit), rotation, gamma */
 
   /* --- Stage 1: Accelerometer Calibration --- */
@@ -158,6 +158,10 @@ int main(void)
    *   inside stage_selftest.c with real ADC readings. See stage_selftest.h for details. */
   Stage_SelfTest_Run();
 
+  /* --- Display Init: draw static STEPS and PACE labels before the tracker starts --- */
+  Display_Init();
+  Stage_DisplayTest_Run();  /* Debug: direct badge cycle — remove once RUNNING is confirmed */
+
   /* --- Stage 3: Step Tracker --- */
   /* Infinite loop — this call NEVER returns.
    * Continuously reads step events, calculates steps-per-minute (SPM),
@@ -171,7 +175,6 @@ int main(void)
    * Everything from here to the end of main() is unreachable in
    * normal operation.  It is kept for reference / future use only.
    * ============================================================ */
-  Display_Init();
 
 
   /* DEAD CODE: Status message test sequence — used during LCD development to verify
